@@ -23,13 +23,21 @@ class PBService:
 
 	def _recv_n(self, n):
 		buf = ''
+
 		while (len(buf) < n):
 			chunk = self.sock.recv(n - len(buf))
-			if not chunk:
+			if chunk is None:
+				break
 				self.sock.close()
 				self.connected = False
 				raise Exception('recv return None')
 			buf = buf + chunk
+
+		if len(buf) != n:
+			self.sock.close()
+			self.connected = False
+			raise Exception("Received %d bytes from %d expected" % (len(buf), n))
+
 		return buf
 
 	def _pb2_call(self, req):
@@ -44,16 +52,13 @@ class PBService:
 
 		self.sock.sendall(payload)
 
-		res = self._recv_n(4)
-		res_len = struct.unpack('!I', res)[0]
-		res = self._recv_n(res_len)
-		if len(res) != res_len:
-			self.sock.close()
-			self.connected = False
-			raise Exception("Received %d bytes from %d expected" % (len(res), res_len))
+		buf = self._recv_n(4)
+		res_len = struct.unpack('!I', buf)[0]
 
-		res_msgid = struct.unpack('!I', res[0:4])[0]
-		res_body = res[4:]
+		buf = self._recv_n(res_len)
+		res_msgid = struct.unpack('!I', buf[0:4])[0]
+		res_body = buf[4:]
+
 		res_name = self.proto._RESPONSE_MSGID.values_by_number[res_msgid].name
 		res = getattr(self.proto, res_name.lower())()
 		res.ParseFromString(res_body)
