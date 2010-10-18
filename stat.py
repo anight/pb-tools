@@ -15,6 +15,35 @@ def add_import_path(*args):
         else:
             raise ImportError("Path '%s' does not exists [base=%s, rel=%s]" % (path, start_path, arg))
 
+def pb2_compile_import():
+    tmp_path = '/tmp' #os.path.expandvars('%TMP%')
+    proto_file = os.path.abspath(proto_file)
+    cmd = "%s --python_out=%s --proto_path=%s %s" % (PROTOC, tmp_path, os.path.dirname(proto_file), proto_file, )
+    er = os.system(cmd)
+    if er != 0:
+        print "Command %s exit code = %d" % (cmd, er, )
+        return
+
+    add_import_path(tmp_path)
+    base_name = os.path.basename(proto_file)
+    module_name = base_name[:base_name.rfind('.')]+'_pb2'
+
+    pb2 = __import__(module_name)
+    os.unlink(os.path.join(tmp_path, module_name+'.py'))
+    return pb2
+
+def pb2_import():
+    if os.path.sep in proto_file:
+        path = os.path.dirname(proto_file)
+        add_import_path(path)
+        module_name = os.path.basename(proto_file)
+        module_name = module_name[:module_name.rfind('.')]
+    else:
+        module_name = proto_file
+    pb2 = __import__(module_name)
+    return pb2
+
+
 def _recv_n(sock, n):
     buf = ''
     while (len(buf) < n):
@@ -25,9 +54,9 @@ def _recv_n(sock, n):
         buf = buf + chunk
         return buf
 
-def test(host, port, req_id, bin_data):
+def request(ip, port, req_id, bin_data):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    err = sock.connect_ex((host, port))
+    err = sock.connect_ex((ip, port))
     if err != 0:
         raise Exception("can't connect = %d, %s" % (err, os.strerror(err)))
 
@@ -48,54 +77,19 @@ def test(host, port, req_id, bin_data):
 
 
 
-def get_request_map(pb2):
-    rin, rout = {}, {}
-    for item in pb2._REQUEST_MSGID.values:
-        name = item.name.lower()
-        rin[name] = (item.number, getattr(pb2, name), )
-    for item in pb2._RESPONSE_MSGID.values:
-        name = item.name.lower()
-        rout[item.number] = (name, getattr(pb2, name), )
-    return rin, rout
-
-
-
 def main(argv):
     if len(argv) != 6:
-        print 'Usage: ./x host port gpb_file.proto request_msgid request_name request_body_in_json'
+        print 'Usage: ./x ip port gpb_file.proto request_msgid request_name request_body_in_json'
         return
-    host, port, proto_file, req_msgid, req_name, req_body = argv
+    ip, port, proto_file, req_msgid, req_name, req_body = argv
     port = int(port)
 
     if '.proto' == proto_file[proto_file.rfind('.'):]:
-        tmp_path = '/tmp' #os.path.expandvars('%TMP%')
-        proto_file = os.path.abspath(proto_file)
-        cmd = "%s --python_out=%s --proto_path=%s %s" % (PROTOC, tmp_path, os.path.dirname(proto_file), proto_file, )
-        er = os.system(cmd)
-        if er != 0:
-            print "Command %s exit code = %d" % (cmd, er, )
-            return
-
-        add_import_path(tmp_path)
-        base_name = os.path.basename(proto_file)
-        module_name = base_name[:base_name.rfind('.')]+'_pb2'
-
-        pb2 = __import__(module_name)
-        os.unlink(os.path.join(tmp_path, module_name+'.py'))
+        pb2 = pb2_compile_import(proto_file)
     else:
-        if os.path.sep in proto_file:
-            path = os.path.dirname(proto_file)
-            add_import_path(path)
-            module_name = os.path.basename(proto_file)
-            module_name = module_name[:module_name.rfind('.')]
-        else:
-            module_name = proto_file
-        pb2 = __import__(module_name)
-
-    #rin, rout = get_request_map(pb2)
+        pb2 = pb2_import(proto_file)
 
     req_id = None
-    req_ctor = None
     try:
         req_id = int(req_msgid)
     except ValueError:
@@ -107,7 +101,7 @@ def main(argv):
                 break
     if req_id is None:
         print 'unknown request id `%s`' % req_msgid
-	return
+        return
 
     req_ctor = getattr(pb2, req_name)
 
@@ -117,20 +111,15 @@ def main(argv):
         print 'cant parse JSON\n%s' % exc
         return 
 
-    #if req_name.lower() not in rin:
-    #    print 'unknown request name %s' % req_name
-    #    return
-
-    #req_id, req_ctor = rin[req_name.lower()]
     req = json2pb(req_ctor(), req_json)
 
     #print req_id, req.SerializeToString().encode('string-escape')
-    res_type, res_body = test(host, port, req_id, req.SerializeToString())
+    res_type, res_body = request(ip, port, req_id, req.SerializeToString())
     #print res_type, res_body.encode('string-escape')
 
     #if res_type not in rout:
     #    print 'unknown response %d' % res_type
-    
+
     for item in pb2._RESPONSE_MSGID.values:
         if res_type == item.number:
             name = item.name.lower()
