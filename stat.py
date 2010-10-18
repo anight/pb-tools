@@ -15,7 +15,7 @@ def add_import_path(*args):
         else:
             raise ImportError("Path '%s' does not exists [base=%s, rel=%s]" % (path, start_path, arg))
 
-def pb2_compile_import():
+def pb2_compile_import(proto_file):
     tmp_path = '/tmp' #os.path.expandvars('%TMP%')
     proto_file = os.path.abspath(proto_file)
     cmd = "%s --python_out=%s --proto_path=%s %s" % (PROTOC, tmp_path, os.path.dirname(proto_file), proto_file, )
@@ -32,7 +32,7 @@ def pb2_compile_import():
     os.unlink(os.path.join(tmp_path, module_name+'.py'))
     return pb2
 
-def pb2_import():
+def pb2_import(proto_file):
     if os.path.sep in proto_file:
         path = os.path.dirname(proto_file)
         add_import_path(path)
