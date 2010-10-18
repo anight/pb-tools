@@ -1,4 +1,5 @@
 
+# (c) 2010, Andrei Nigmatulin
 
 import os, socket, struct
 from protobuf_json import json2pb
