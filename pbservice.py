@@ -28,15 +28,12 @@ class PBService:
 			chunk = self.sock.recv(n - len(buf))
 			if chunk is None:
 				break
-				self.sock.close()
-				self.connected = False
-				raise Exception('recv return None')
 			buf = buf + chunk
 
 		if len(buf) != n:
 			self.sock.close()
 			self.connected = False
-			raise Exception("Received %d bytes from %d expected" % (len(buf), n))
+			raise Exception("Truncated response: received %d bytes from %d expected" % (len(buf), n))
 
 		return buf
 
