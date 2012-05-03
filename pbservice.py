@@ -1,54 +1,91 @@
+#! /usr/bin/python
 
 # (c) 2010, Andrei Nigmatulin
 
 import os, socket, struct
 from protobuf_json import json2pb
 
+import time
+
+def retry_once_on(e):
+
+	def deco_retry(f):
+		def f_retry(*args, **kwargs):
+
+			try:
+				return f(*args, **kwargs)
+			except e:
+				return f(*args, **kwargs)
+
+		return f_retry
+	return deco_retry
+
 class PBService:
 
+	class _IOFailed(Exception): pass
+
 	def __init__(self, **kvargs):
-		self.host = kvargs['host']
-		self.port = int(kvargs['port'])
+		if 'unix_socket' in kvargs:
+			self._family = socket.AF_UNIX
+			self._addr = kvargs['unix_socket']
+		else:
+			self._family = socket.AF_INET
+			self._addr = (kvargs['host'], int(kvargs['port']))
 		self.proto = __import__(kvargs['proto'] + '_pb2')
-		self.connected = False
+		self._connected = False
+		self._has_more = False
 
 	def _connect(self):
-		if self.connected:
+		if self._connected:
 			return
-		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		err = self.sock.connect_ex((self.host, self.port))
+		self._sock = socket.socket(self._family, socket.SOCK_STREAM)
+		err = self._sock.connect_ex(self._addr)
 		if err != 0:
-			raise Exception("can't connect = %d, %s" % (err, os.strerror(err)))
-		self.connected = True
+			raise self._IOFailed("can't connect = %d, %s" % (err, os.strerror(err)))
+		self._connected = True
 
 	def _recv_n(self, n):
 		buf = ''
 
 		while (len(buf) < n):
-			chunk = self.sock.recv(n - len(buf))
-			if chunk is None:
+			chunk = self._sock.recv(n - len(buf))
+			if chunk == '':
 				break
 			buf = buf + chunk
 
 		if len(buf) != n:
-			self.sock.close()
-			self.connected = False
-			raise Exception("Truncated response: received %d bytes from %d expected" % (len(buf), n))
+			self._sock.close()
+			self._connected = False
+			raise self._IOFailed("Truncated response: received %d bytes from %d expected" % (len(buf), n))
 
 		return buf
 
+	def _send(self, bytes):
+		try:
+			self._sock.sendall(bytes)
+		except socket.error:
+			self._sock.close()
+			self._connected = False
+			raise self._IOFailed("Send failed")
+
+	@retry_once_on(_IOFailed) # connect, recv or send
 	def _pb2_call(self, req):
 
 		""" Hides service i/o, message ids and other binary protocol stuff """
 
+		assert not self._has_more
+
 		self._connect()
 
-		req_msgid = self.proto._REQUEST_MSGID.values_by_name[req.DESCRIPTOR.name.upper()].number
+		req_msgid = self.proto._REQUEST_MSGID.values_by_name[req.DESCRIPTOR.name.upper()]
 		bin_data = req.SerializeToString()
-		payload = struct.pack('!II', len(bin_data) + 4, req_msgid) + bin_data
+		payload = struct.pack('!II', len(bin_data) + 4, req_msgid.number) + bin_data
 
-		self.sock.sendall(payload)
+		self._send(payload)
 
+		return self._read_packet()
+
+	def _read_packet(self):
 		buf = self._recv_n(4)
 		res_len = struct.unpack('!I', buf)[0]
 
@@ -56,8 +93,13 @@ class PBService:
 		res_msgid = struct.unpack('!I', buf[0:4])[0]
 		res_body = buf[4:]
 
-		res_name = self.proto._RESPONSE_MSGID.values_by_number[res_msgid].name
-		res = getattr(self.proto, res_name.lower())()
+		if res_msgid & 0x80000000:
+			res_msgid &= ~0x80000000
+			self._has_more = True
+		else:
+			self._has_more = False
+		res_msg = self.proto._RESPONSE_MSGID.values_by_number[res_msgid]
+		res = getattr(self.proto, res_msg.name.lower())()
 		res.ParseFromString(res_body)
 
 		return res
@@ -69,14 +111,18 @@ class PBService:
 			else: # arg passed as dict
 				req_pb2 = getattr(self.proto, 'request_%s' % name)()
 				json2pb(req_pb2, kv)
-			return self._pb2_call(req_pb2)
+			o = self._pb2_call(req_pb2)
+			if o.DESCRIPTOR.name == 'response_generic' and o.error_code != 0:
+				self._service_error = o
+			else:
+				self._service_error = None
+			return o
 		return call
 
 if __name__ == '__main__':
 
 	""" Usage example """
 
-	import sys
-	sys.path.insert(0, '../geoborder/proto')
-	geoborder = PBService(host='127.0.0.1', port=11853, proto='geoborder')
-	print geoborder.locate(lon=-0.50880, lat=51.67577)
+	mm = PBService(host='127.0.0.1', port=11013, proto='meetmaker')
+	print mm.user_get(user_id=123)
+
