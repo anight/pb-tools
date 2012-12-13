@@ -24,6 +24,9 @@ class PBService:
 
 	class _IOFailed(Exception): pass
 
+	_sock = None
+	_has_more = False
+
 	def __init__(self, **kvargs):
 		if 'unix_socket' in kvargs:
 			self._family = socket.AF_UNIX
@@ -32,17 +35,20 @@ class PBService:
 			self._family = socket.AF_INET
 			self._addr = (kvargs['host'], int(kvargs['port']))
 		self.proto = __import__(kvargs['proto'] + '_pb2')
-		self._connected = False
+
+	def _clean_close(self):
+		self._sock.close()
+		self._sock = None
 		self._has_more = False
 
 	def _connect(self):
-		if self._connected:
+		if self._sock is not None:
 			return
 		self._sock = socket.socket(self._family, socket.SOCK_STREAM)
 		err = self._sock.connect_ex(self._addr)
 		if err != 0:
+			self._clean_close()
 			raise self._IOFailed("can't connect = %d, %s" % (err, os.strerror(err)))
-		self._connected = True
 
 	def _recv_n(self, n):
 		buf = ''
@@ -54,8 +60,7 @@ class PBService:
 			buf = buf + chunk
 
 		if len(buf) != n:
-			self._sock.close()
-			self._connected = False
+			self._clean_close()
 			raise self._IOFailed("Truncated response: received %d bytes from %d expected" % (len(buf), n))
 
 		return buf
@@ -64,8 +69,7 @@ class PBService:
 		try:
 			self._sock.sendall(bytes)
 		except socket.error:
-			self._sock.close()
-			self._connected = False
+			self._clean_close()
 			raise self._IOFailed("Send failed")
 
 	@retry_once_on(_IOFailed) # connect, recv or send
