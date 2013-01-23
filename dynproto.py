@@ -44,6 +44,7 @@ class FDPLinker:
 		self._enum_of_field = {}
 		self._extension_scope = {}
 		self._is_extension = {}
+		self._obj2pb2 = {}
 
 	def add(self, fdp):
 
@@ -79,7 +80,7 @@ class FDPLinker:
 				if link_name.startswith('.'):
 					return link_name
 				else:
-					# search with cpp scoping rules
+					# search with cpp scoping rules, as described in descriptor.proto
 					search = list(name)
 					while fqname(search + [link_name]) not in self._names:
 						if len(search) == 0:
@@ -95,7 +96,6 @@ class FDPLinker:
 					if field.type == dfd.TYPE_MESSAGE:
 						self._message_of_field[id(field)] = self._names[fq]
 					else:
-#						print self._names
 						self._enum_of_field[id(field)] = self._names[fq]
 
 			for msg in messages:
@@ -128,6 +128,12 @@ class FDPLinker:
 
 	def is_extension(self, field):
 		return self._is_extension[id(field)]
+
+	def add_pb2(self, obj, pb2):
+		self._obj2pb2[id(obj)] = pb2
+
+	def pb2(self, obj):
+		return self._obj2pb2.get(id(obj), None)
 
 class DynFDP:
 
@@ -217,7 +223,7 @@ class DynFDP:
 			return None
 		return descriptor._ParseOptions(getattr(descriptor_pb2, class_name)(), serialized)
 
-	def EnumValue(self, index, item):
+	def EnumValueDescriptor(self, index, item):
 		return descriptor.EnumValueDescriptor(
 			name=str(item.name),
 			index=index,
@@ -225,23 +231,25 @@ class DynFDP:
 			options=self.OptionsValue("EnumValueOptions", item.options),
 			type=None)
 
-	def Enum(self, item):
+	def EnumDescriptor(self, item):
 		ss, se = self.SerializedPbInterval(item)
-		return descriptor.EnumDescriptor(
+		e = descriptor.EnumDescriptor(
 			name=str(item.name),
 			full_name=self.FullName(item),
 			filename=None,
 			file=self.module.DESCRIPTOR,
-			values=[ self.EnumValue(index, value) for index, value in enumerate(item.value) ],
+			values=[ self.EnumValueDescriptor(index, value) for index, value in enumerate(item.value) ],
 			containing_type=None,
 			options=self.OptionsValue("EnumOptions", item.options),
 			serialized_start=ss,
 			serialized_end=se
 		)
+		self.linker.add_pb2(item, e)
+		return e
 
 	def PrintTopLevelEnums(self):
 		for enum_type in self.fdp.enum_type:
-			setattr(self.module, self.ModuleLevelDescriptorName(enum_type), self.Enum(enum_type))
+			setattr(self.module, self.ModuleLevelDescriptorName(enum_type), self.EnumDescriptor(enum_type))
 			for ev in enum_type.value:
 				setattr(self.module, ev.name, ev.number)
 
@@ -256,7 +264,7 @@ class DynFDP:
 			for message_type in msg.nested_type:
 				PrintNestedEnums(message_type)
 			for enum_type in msg.enum_type:
-				setattr(self.module, self.ModuleLevelDescriptorName(enum_type), self.Enum(enum_type))
+				setattr(self.module, self.ModuleLevelDescriptorName(enum_type), self.EnumDescriptor(enum_type))
 		for message_type in self.fdp.message_type:
 			PrintNestedEnums(message_type)
 
@@ -329,29 +337,33 @@ class DynFDP:
 	def PrintFieldDescriptorsInDescriptor(self, is_extension, lst):
 		return [self.FieldDescriptor(index, field, is_extension) for index, field in enumerate(lst)]
 
+	def MessageDescriptor(self, msg):
+		ss, se = self.SerializedPbInterval(msg)
+		m = descriptor.Descriptor(
+			name=str(msg.name),
+			full_name=self.FullName(msg),
+			filename=None,
+			file=self.module.DESCRIPTOR,
+			containing_type=None,
+			fields=self.PrintFieldDescriptorsInDescriptor(False, msg.field),
+			extensions=self.PrintFieldDescriptorsInDescriptor(True, msg.extension),
+			nested_types=[ getattr(self.module, self.ModuleLevelDescriptorName(message_type))
+				for message_type in msg.nested_type ],
+			enum_types=[ getattr(self.module, self.ModuleLevelDescriptorName(enum_type))
+				for enum_type in msg.enum_type ],
+			options=self.OptionsValue("MessageOptions", msg.options),
+			is_extendable=(len(msg.extension_range) > 0),
+			extension_ranges=[ (er.start, er.end) for er in msg.extension_range ],
+			serialized_start=ss,
+			serialized_end=se)
+		self.linker.add_pb2(msg, m)
+		return m
+
 	def PrintMessageDescriptors(self):
 		def PrintDescriptor(msg):
 			for message_type in msg.nested_type:
 				PrintDescriptor(message_type)
-			ss, se = self.SerializedPbInterval(msg)
-
-			setattr(self.module, self.ModuleLevelDescriptorName(msg), descriptor.Descriptor(
-				name=str(msg.name),
-				full_name=self.FullName(msg),
-				filename=None,
-				file=self.module.DESCRIPTOR,
-				containing_type=None,
-				fields=self.PrintFieldDescriptorsInDescriptor(False, msg.field),
-				extensions=self.PrintFieldDescriptorsInDescriptor(True, msg.extension),
-				nested_types=[ getattr(self.module, self.ModuleLevelDescriptorName(message_type))
-					for message_type in msg.nested_type ],
-				enum_types=[ getattr(self.module, self.ModuleLevelDescriptorName(enum_type))
-					for enum_type in msg.enum_type ],
-				options=self.OptionsValue("MessageOptions", msg.options),
-				is_extendable=(len(msg.extension_range) > 0),
-				extension_ranges=[ (er.start, er.end) for er in msg.extension_range ],
-				serialized_start=ss,
-				serialized_end=se))
+			setattr(self.module, self.ModuleLevelDescriptorName(msg), self.MessageDescriptor(msg))
 		for message_type in self.fdp.message_type:
 			PrintDescriptor(message_type)
 
@@ -380,12 +392,11 @@ class DynFDP:
 		obj = self.FieldReferencingExpression(msg, field, dict_name)
 		m = self.linker.message_of_field(field)
 		if m is not None:
-			m_obj = getattr(self.module, self.ModuleLevelDescriptorName(m))
+			m_obj = self.linker.pb2(m)
 			obj.message_type = m_obj
 		e = self.linker.enum_of_field(field)
-		print e
 		if e is not None:
-			e_obj = getattr(self.module, self.ModuleLevelDescriptorName(e))
+			e_obj = self.linker.pb2(e)
 			obj.enum_type = e_obj
 
 	def FixForeignFieldsInDescriptors(self):
