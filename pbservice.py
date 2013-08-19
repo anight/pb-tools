@@ -31,20 +31,26 @@ class PBService:
 
 	_sock = None
 	_has_more = False
+	_own_socket = True
 
 	def __init__(self, **kvargs):
-		if 'unix_socket' in kvargs:
-			self._family = socket.AF_UNIX
-			self._addr = kvargs['unix_socket']
+		if 'socket' in kvargs:
+			self._sock = kvargs['socket']
+			self._own_socket = False
 		else:
-			self._family = socket.AF_INET
-			self._addr = (kvargs['host'], int(kvargs['port']))
+			if 'unix_socket' in kvargs:
+				self._family = socket.AF_UNIX
+				self._addr = kvargs['unix_socket']
+			else:
+				self._family = socket.AF_INET
+				self._addr = (kvargs['host'], int(kvargs['port']))
 		self.proto = __import__(kvargs['proto'] + '_pb2')
 
 	def _clean_close(self):
-		self._sock.close()
-		self._sock = None
-		self._has_more = False
+		if self._own_socket:
+			self._sock.close()
+			self._sock = None
+			self._has_more = False
 
 	def _connect(self):
 		if self._sock is not None:
