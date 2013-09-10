@@ -35,6 +35,15 @@ class PBService:
 		else:
 			self._family = socket.AF_INET
 			self._addr = (kvargs['host'], int(kvargs['port']))
+		if 'connect_timeout' in kvargs:
+			self._connect_timeout = kvargs['connect_timeout']
+		else:
+			self._connect_timeout = 30
+		if 'io_timeout' in kvargs:
+			self._io_timeout = kvargs['io_timeout']
+		else:
+			self._io_timeout = 60
+
 		self.proto = __import__(kvargs['proto'] + '_pb2')
 
 	def _clean_close(self):
@@ -46,10 +55,14 @@ class PBService:
 		if self._sock is not None:
 			return
 		self._sock = socket.socket(self._family, socket.SOCK_STREAM)
+
+		self._sock.settimeout(self._connect_timeout)
 		err = self._sock.connect_ex(self._addr)
 		if err != 0:
 			self._clean_close()
 			raise IOFailed("can't connect = %d, %s" % (err, os.strerror(err)))
+		self._connected = True
+		self._sock.settimeout(self._io_timeout)
 
 	def _recv_n(self, n):
 		buf = ''
