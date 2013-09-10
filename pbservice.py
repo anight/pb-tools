@@ -2,10 +2,13 @@
 
 # (c) 2010, Andrei Nigmatulin
 
-import os, socket, struct
+import os
+import socket
+import struct
 from protobuf_json import json2pb
 
 import time
+
 
 def retry_once_on(e):
 
@@ -20,21 +23,26 @@ def retry_once_on(e):
 		return f_retry
 	return deco_retry
 
-class IOFailed(Exception): pass
+class IOFailed(Exception):
+	pass
 
 class PBService:
 
-
 	_sock = None
 	_has_more = False
+	_own_socket = True
 
 	def __init__(self, **kvargs):
-		if 'unix_socket' in kvargs:
-			self._family = socket.AF_UNIX
-			self._addr = kvargs['unix_socket']
+		if 'socket' in kvargs:
+			self._sock = kvargs['socket']
+			self._own_socket = False
 		else:
-			self._family = socket.AF_INET
-			self._addr = (kvargs['host'], int(kvargs['port']))
+			if 'unix_socket' in kvargs:
+				self._family = socket.AF_UNIX
+				self._addr = kvargs['unix_socket']
+			else:
+				self._family = socket.AF_INET
+				self._addr = (kvargs['host'], int(kvargs['port']))
 		if 'connect_timeout' in kvargs:
 			self._connect_timeout = kvargs['connect_timeout']
 		else:
@@ -47,9 +55,10 @@ class PBService:
 		self.proto = __import__(kvargs['proto'] + '_pb2')
 
 	def _clean_close(self):
-		self._sock.close()
-		self._sock = None
-		self._has_more = False
+		if self._own_socket:
+			self._sock.close()
+			self._sock = None
+			self._has_more = False
 
 	def _connect(self):
 		if self._sock is not None:
@@ -86,7 +95,7 @@ class PBService:
 			self._clean_close()
 			raise IOFailed("Send failed")
 
-	@retry_once_on(IOFailed) # connect, recv or send
+	@retry_once_on(IOFailed)  # connect, recv or send
 	def _pb2_call(self, req):
 
 		""" Hides service i/o, message ids and other binary protocol stuff """
@@ -124,9 +133,9 @@ class PBService:
 
 	def __getattr__(self, name):
 		def call(*a, **kv):
-			if len(a): # arg passed as pb2 object
+			if len(a):  # arg passed as pb2 object
 				req_pb2 = a[0]
-			else: # arg passed as dict
+			else:  # arg passed as dict
 				req_pb2 = getattr(self.proto, 'request_%s' % name)()
 				json2pb(req_pb2, kv)
 			o = self._pb2_call(req_pb2)
@@ -143,4 +152,3 @@ if __name__ == '__main__':
 
 	mm = PBService(host='127.0.0.1', port=11013, proto='meetmaker')
 	print mm.user_get(user_id=123)
-
