@@ -20,9 +20,10 @@ def retry_once_on(e):
 		return f_retry
 	return deco_retry
 
+class IOFailed(Exception): pass
+
 class PBService:
 
-	class _IOFailed(Exception): pass
 
 	_sock = None
 	_has_more = False
@@ -48,7 +49,7 @@ class PBService:
 		err = self._sock.connect_ex(self._addr)
 		if err != 0:
 			self._clean_close()
-			raise self._IOFailed("can't connect = %d, %s" % (err, os.strerror(err)))
+			raise IOFailed("can't connect = %d, %s" % (err, os.strerror(err)))
 
 	def _recv_n(self, n):
 		buf = ''
@@ -61,7 +62,7 @@ class PBService:
 
 		if len(buf) != n:
 			self._clean_close()
-			raise self._IOFailed("Truncated response: received %d bytes from %d expected" % (len(buf), n))
+			raise IOFailed("Truncated response: received %d bytes from %d expected" % (len(buf), n))
 
 		return buf
 
@@ -70,9 +71,9 @@ class PBService:
 			self._sock.sendall(bytes)
 		except socket.error:
 			self._clean_close()
-			raise self._IOFailed("Send failed")
+			raise IOFailed("Send failed")
 
-	@retry_once_on(_IOFailed) # connect, recv or send
+	@retry_once_on(IOFailed) # connect, recv or send
 	def _pb2_call(self, req):
 
 		""" Hides service i/o, message ids and other binary protocol stuff """
