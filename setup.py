@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(name='pb_tools',
         version='0.1',
-        description='Python libraries for GPBS protokol',
+        description='Python support code for Google Protocol Buffers',
         url='',
         author='Andrei Nigmatulin',
         author_email='anight@corp.badoo.com',
