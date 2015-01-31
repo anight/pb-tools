@@ -8,21 +8,6 @@ import struct
 import asyncore
 from protobuf_json import json2pb
 
-import time
-
-
-def retry_once_on(e):
-
-	def deco_retry(f):
-		def f_retry(*args, **kwargs):
-
-			try:
-				return f(*args, **kwargs)
-			except e:
-				return f(*args, **kwargs)
-
-		return f_retry
-	return deco_retry
 
 class IOFailed(Exception):
 	pass
@@ -45,9 +30,11 @@ class common(object):
 			if 'unix_socket' in kvargs:
 				self._family = socket.AF_UNIX
 				self._addr = kvargs['unix_socket']
-			else:
+			elif 'host' in kvargs and 'port' in kvargs:
 				self._family = socket.AF_INET
 				self._addr = (kvargs['host'], int(kvargs['port']))
+			else:
+				raise IncorrectUse("the address is missing")
 
 		if 'io_timeout' in kvargs:
 			self._io_timeout = kvargs['io_timeout']
@@ -68,7 +55,7 @@ class common(object):
 
 		if len(buf) != n:
 			self._clean_close()
-			raise IOFailed("Truncated response: received %d bytes from %d expected" % (len(buf), n))
+			raise IOFailed("Truncated message: received %d bytes out of %d expected" % (len(buf), n))
 
 		return buf
 
@@ -81,15 +68,15 @@ class common(object):
 
 	def _encode_msg(self, msg):
 		if msg.DESCRIPTOR.name.startswith('request_'):
-			msgid_object = self.proto._REQUEST_MSGID
+			msgid_enum = self.proto._REQUEST_MSGID
 		elif msg.DESCRIPTOR.name.startswith('response_'):
-			msgid_object = self.proto._RESPONSE_MSGID
+			msgid_enum = self.proto._RESPONSE_MSGID
 		else:
-			raise IncorrectUse("can't send message %s" % msg.name)
+			raise IncorrectUse("can't encode message %s" % msg.name)
 
-		msgid = msgid_object.values_by_name[msg.DESCRIPTOR.name.upper()]
+		msgid_enum_value = msgid_enum.values_by_name[msg.DESCRIPTOR.name.upper()]
 		body = msg.SerializeToString()
-		payload = struct.pack('!II', 4 + len(body), msgid.number) + body
+		payload = struct.pack('!II', 4 + len(body), msgid_enum_value.number) + body
 
 		return payload
 
@@ -113,6 +100,21 @@ class common(object):
 	def _recv_response_msg(self):
 		return self._recv_msg(self.proto._RESPONSE_MSGID)
 
+	@staticmethod
+	def retry_once_on(e):
+
+		def deco_retry(f):
+			def f_retry(*args, **kwargs):
+
+				try:
+					return f(*args, **kwargs)
+				except e:
+					return f(*args, **kwargs)
+
+			return f_retry
+		return deco_retry
+
+
 class PBService(common):
 
 	def __init__(self, **kvargs):
@@ -135,7 +137,7 @@ class PBService(common):
 		self._connected = True
 		self._sock.settimeout(self._io_timeout)
 
-	@retry_once_on(IOFailed)  # connect, recv or send
+	@common.retry_once_on(IOFailed)  # connect, recv or send
 	def _pb2_call(self, req):
 		self._connect()
 		bytes = self._encode_msg(req)
@@ -201,7 +203,8 @@ class PBServer(common):
 			req_msgid = self._server.proto._REQUEST_MSGID.values_by_number[self.read_msg_id]
 			req = getattr(self._server.proto, req_msgid.name.lower())()
 			req.ParseFromString(self.read_buffer)
-			res = getattr(self._server, req_msgid.name.lower())(req)
+			handler = getattr(self._server, req_msgid.name.lower())
+			res = handler(req)
 			self.write_buffer = self._server._encode_msg(res)
 
 		def handle_read(self):
