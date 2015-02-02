@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 
 # (c) 2010-2015, Andrei Nigmatulin
 
