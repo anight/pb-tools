@@ -55,7 +55,7 @@ def json2pb(pb, js):
 def enum_value_as_int(field, value):
 	d = field.enum_type.values_by_name
 
-	if type(value) is str or unicode:
+	if type(value) in (str, unicode):
 		if value in d:
 			return d[value].number
 		else:
@@ -67,7 +67,7 @@ def enum_value_as_int(field, value):
 def enum_value_as_str(field, value):
 	d = field.enum_type.values_by_number
 
-	if type(value) is int or long:
+	if type(value) in (int, long):
 		if value in d:
 			return d[value].name
 		else:
