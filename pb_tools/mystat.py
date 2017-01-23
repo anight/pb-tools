@@ -21,7 +21,7 @@ def pb2_compile_import(proto_file):
     cmd = "%s --python_out=%s --proto_path=%s %s" % (PROTOC, tmp_path, os.path.dirname(proto_file), proto_file, )
     er = os.system(cmd)
     if er != 0:
-        print "Command %s exit code = %d" % (cmd, er, )
+        print("Command %s exit code = %d" % (cmd, er, ))
         return
 
     add_import_path(tmp_path)
@@ -79,7 +79,7 @@ def request(ip, port, req_id, bin_data):
 
 def main(argv):
     if len(argv) != 6:
-        print 'Usage: ./x ip port gpb_file.proto request_msgid request_name request_body_in_json'
+        print('Usage: ./x ip port gpb_file.proto request_msgid request_name request_body_in_json')
         return
     ip, port, proto_file, req_msgid, req_name, req_body = argv
     port = int(port)
@@ -100,15 +100,15 @@ def main(argv):
                 req_id = item.number
                 break
     if req_id is None:
-        print 'unknown request id `%s`' % req_msgid
+        print('unknown request id `%s`' % req_msgid)
         return
 
     req_ctor = getattr(pb2, req_name)
 
     try:
         req_json = json.loads(req_body)
-    except Exception, exc:
-        print 'cant parse JSON\n%s' % exc
+    except (Exception, exc):
+        print('cant parse JSON\n%s' % exc)
         return 
 
     req = json2pb(req_ctor(), req_json)
@@ -128,7 +128,7 @@ def main(argv):
     #res_name, res_ctor = rout[res_type]
     res = res_ctor()
     res.ParseFromString(res_body)
-    print "RESPONSE: %s\n%s\n" % (res_name, json.dumps(pb2json(res), indent=4))
+    print("RESPONSE: %s\n%s\n" % (res_name, json.dumps(pb2json(res), indent=4)))
 
 if __name__ == '__main__':
     main(sys.argv[1:])

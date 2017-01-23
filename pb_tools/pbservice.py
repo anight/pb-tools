@@ -6,7 +6,7 @@ import os
 import socket
 import struct
 import asyncore
-from protobuf_json import json2pb
+from pb_tools.protobuf_json import json2pb
 
 
 class IOFailed(Exception):
@@ -257,7 +257,7 @@ if __name__ == '__main__':
 	""" client example """
 
 	mm = PBService(host='127.0.0.1', port=11013, proto='meetmaker')
-	print mm.user_get(user_id=123)
+	print(mm.user_get(user_id=123))
 
 	""" server example """
 

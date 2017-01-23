@@ -27,7 +27,7 @@ def json2pb(pb, js):
 			pass
 		elif field.type in _js2ftype:
 			ftype = _js2ftype[field.type]
-		else: 
+		else:
 			raise ParseError("Field %s.%s of type '%d' is not supported" % (pb.__class__.__name__, field.name, field.type, ))
 		value = js[field.name]
 		if field.label == FD.LABEL_REPEATED:
@@ -71,40 +71,40 @@ def pb2json(pb):
 _ftype2js = {
 	FD.TYPE_DOUBLE: float,
 	FD.TYPE_FLOAT: float,
-	FD.TYPE_INT64: long,
-	FD.TYPE_UINT64: long,
+	FD.TYPE_INT64: int,
+	FD.TYPE_UINT64: int,
 	FD.TYPE_INT32: int,
-	FD.TYPE_FIXED64: long,
+	FD.TYPE_FIXED64: int,
 	FD.TYPE_FIXED32: int,
 	FD.TYPE_BOOL: bool,
-	FD.TYPE_STRING: unicode,
+	FD.TYPE_STRING: str,
 	#FD.TYPE_MESSAGE: pb2json, #handled specially
 	FD.TYPE_BYTES: lambda x: x,
 	FD.TYPE_UINT32: int,
 	FD.TYPE_ENUM: int,
 	FD.TYPE_SFIXED32: int,
-	FD.TYPE_SFIXED64: long,
+	FD.TYPE_SFIXED64: int,
 	FD.TYPE_SINT32: int,
-	FD.TYPE_SINT64: long,
+	FD.TYPE_SINT64: int,
 }
 
 _js2ftype = {
 	FD.TYPE_DOUBLE: float,
 	FD.TYPE_FLOAT: float,
-	FD.TYPE_INT64: long,
-	FD.TYPE_UINT64: long,
+	FD.TYPE_INT64: int,
+	FD.TYPE_UINT64: int,
 	FD.TYPE_INT32: int,
-	FD.TYPE_FIXED64: long,
+	FD.TYPE_FIXED64: int,
 	FD.TYPE_FIXED32: int,
 	FD.TYPE_BOOL: bool,
-	FD.TYPE_STRING: unicode,
+	FD.TYPE_STRING: str,
 	# FD.TYPE_MESSAGE: json2pb,	#handled specially
 	FD.TYPE_BYTES: lambda x: x,
 	FD.TYPE_UINT32: int,
 	FD.TYPE_ENUM: int,
 	FD.TYPE_SFIXED32: int,
-	FD.TYPE_SFIXED64: long,
+	FD.TYPE_SFIXED64: int,
 	FD.TYPE_SINT32: int,
-	FD.TYPE_SINT64: long,
+	FD.TYPE_SINT64: int,
 }
 
