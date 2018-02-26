@@ -45,11 +45,11 @@ class common(object):
 			self._sock = None
 
 	def _recv_n(self, n):
-		buf = ''
+		buf = b''
 
 		while (len(buf) < n):
 			chunk = self._sock.recv(n - len(buf))
-			if chunk == '':
+			if chunk == b'':
 				break
 			buf += chunk
 
@@ -180,8 +180,8 @@ class PBServer(common):
 		def __init__(self, server, sock, address):
 			asyncore.dispatcher.__init__(self, sock)
 			self._server = server
-			self.write_buffer = ''
-			self.read_buffer = ''
+			self.write_buffer = b''
+			self.read_buffer = b''
 			self.read_msg_id = None
 			self.read_msg_len = 0
 
@@ -213,7 +213,7 @@ class PBServer(common):
 				self.read_buffer += self.recv(to_recv)
 				if len(self.read_buffer) == 8:
 					self.read_msg_len, self.read_msg_id = struct.unpack('!II', self.read_buffer)
-					self.read_buffer = ''
+					self.read_buffer = b''
 					if self.read_msg_len < 4:
 						self.close()
 						return
@@ -224,7 +224,7 @@ class PBServer(common):
 					self.read_buffer += self.recv(to_recv)
 				if len(self.read_buffer) == self.read_msg_len:
 					self.handle_request()
-					self.read_buffer = ''
+					self.read_buffer = b''
 					self.read_msg_id = None
 					self.read_msg_len = 0
 
