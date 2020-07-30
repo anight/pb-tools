@@ -20,7 +20,10 @@ class common(object):
 	def __init__(self, kvargs):
 		self._sock = None
 		self._own_socket = True
-		self.proto = __import__(kvargs['proto'] + '_pb2')
+		if 'module' in kvargs:
+			self.proto = kvargs['module']
+		else:
+			self.proto = __import__(kvargs['proto'] + '_pb2')
 		self._io_timeout = 60
 
 		if 'socket' in kvargs:
